@@ -7,32 +7,37 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Renamed back to fetchRole to match your Login.jsx requirements
+  /**
+   * fetchRole: Centralized logic to verify user permissions.
+   * Priority 1: Check JWT app_metadata (Fastest, works with RLS).
+   * Priority 2: Sync with Flask Backend (Full profile data).
+   */
   const fetchRole = async (supabaseUser) => {
     if (!supabaseUser) {
       setUser(null);
       return null;
     }
 
-    // 1. Get role from JWT Metadata (Fastest)
+    // 1. Get role from JWT Metadata (Fastest fallback)
     const roleFromMetadata = supabaseUser.app_metadata?.role || 'student';
 
-    // 2. Sync with Backend
-    let roleData = { role: roleFromMetadata };
+    // 2. Sync with Backend Profile
+    let profileData = { role: roleFromMetadata };
     try {
       const res = await fetch(`http://localhost:5000/api/user/${supabaseUser.id}`);
       if (res.ok) {
         const backendData = await res.json();
-        roleData = { ...roleData, ...backendData };
+        // Merge metadata role with backend profile details
+        profileData = { ...profileData, ...backendData };
       }
     } catch (err) {
-      console.warn("Backend profile sync failed, using metadata role.");
+      console.warn("Backend profile sync failed. Relying on JWT metadata role.");
     }
 
     const fullUser = { 
       ...supabaseUser, 
-      ...roleData,
-      role: roleData.role 
+      ...profileData,
+      role: profileData.role // Explicitly set for easy access in components
     };
 
     setUser(fullUser);
@@ -40,6 +45,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    // Initial Session Load
     const initSession = async () => {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
@@ -51,6 +57,7 @@ export const AuthProvider = ({ children }) => {
 
     initSession();
 
+    // Listen for Auth State Changes (Login, Logout, Token Refresh)
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         await fetchRole(session.user);
@@ -66,7 +73,6 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    // We export fetchRole here so Login.jsx can find it
     <AuthContext.Provider value={{ user, loading, supabase, fetchRole }}>
       {!loading && children}
     </AuthContext.Provider>

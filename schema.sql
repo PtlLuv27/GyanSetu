@@ -408,3 +408,22 @@ CREATE POLICY "Students manage own attempts" ON test_attempts
 FOR ALL TO authenticated 
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
+
+-- Create the video bookmarks table
+CREATE TABLE video_bookmarks (
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    video_id INT REFERENCES public.videos(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    UNIQUE(user_id, video_id) -- Prevents duplicate bookmarks
+);
+
+-- Enable RLS
+ALTER TABLE video_bookmarks ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can only manage their own bookmarks
+CREATE POLICY "Users can manage own bookmarks" 
+ON video_bookmarks FOR ALL 
+TO authenticated 
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);

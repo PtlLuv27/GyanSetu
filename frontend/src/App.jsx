@@ -9,13 +9,14 @@ import Login from './pages/Login';
 import StudentDashboard from './dashboards/Student/StudentDashboard';
 import Syllabus from './dashboards/Student/Syllabus';
 import Materials from './dashboards/Student/Materials';
-import Videos from './dashboards/Student/Videos';
+import Videos from './dashboards/Student/Videos'; // Student View: Read-only
+import AITutor from './dashboards/Student/AITutor';
 
 // Expert Components
 import ExpertDashboard from './dashboards/Expert/ExpertDashboard';
 import UploadSyllabus from './dashboards/Expert/UploadSyllabus';  
 import UploadMaterials from './dashboards/Expert/UploadMaterials'; 
-import UploadVideos from './dashboards/Expert/UploadVideos';       
+import UploadVideos from './dashboards/Expert/UploadVideos'; // Expert View: Management
 import ManageStudents from './dashboards/Expert/ManageStudents';   
 
 // Layouts & Components
@@ -30,6 +31,7 @@ const ProtectedRoute = ({ children, allowedRole }) => {
     </div>
   );
   if (!user) return <Navigate to="/login" />;
+  
   if (allowedRole && user.role !== allowedRole) {
     return <Navigate to={user.role === 'expert' ? '/expert' : '/student'} />;
   }
@@ -41,12 +43,11 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public Routes */}
           <Route path="/" element={<Navigate to="/login" />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Expert Section (Nested within ExpertLayout) */}
+          {/* Expert Section */}
           <Route 
             path="/expert" 
             element={
@@ -55,7 +56,6 @@ function App() {
               </ProtectedRoute>
             }
           >
-            {/* These paths match your Sidebar.jsx 'path' values exactly */}
             <Route index element={<ExpertDashboard />} />
             <Route path="syllabus" element={<UploadSyllabus />} />
             <Route path="materials" element={<UploadMaterials />} />
@@ -63,7 +63,7 @@ function App() {
             <Route path="students" element={<ManageStudents />} />
           </Route>
 
-          {/* Student Section (Nested with Sidebar) */}
+          {/* Student Section */}
           <Route
             path="/student/*"
             element={
@@ -76,13 +76,13 @@ function App() {
                       <Route path="syllabus" element={<Syllabus />} />
                       <Route path="materials" element={<Materials />} />
                       <Route path="videos" element={<Videos />} />
+                      <Route path="ai-tutor" element={<AITutor />} />
                     </Routes>
                   </main>
                 </div>
               </ProtectedRoute>
             }
           />
-
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </Router>

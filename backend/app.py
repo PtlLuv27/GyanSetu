@@ -3,22 +3,63 @@ from flask_cors import CORS
 from models import db, User, Material, Video
 from dotenv import load_dotenv
 import os
+import requests
+import io
+import PyPDF2
+from google import genai # New SDK import
+from google.genai import types # For configuration types
+from sqlalchemy import text
+import json
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 
-# Allows React (localhost:5173) to communicate with Flask (localhost:5000)
+# Middleware
 CORS(app) 
 
-# Database configuration
+# 2. Use environment variables for sensitive configurations
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
+# 3. Securely initialize the Gemini Client using the key from .env
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=GEMINI_KEY)
+
+# Initialize Modern Gemini Client
+# Replaces genai.configure and genai.GenerativeModel
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+@app.route('/api/ai/ask', methods=['POST'])
+def ask_ai_tutor():
+    data = request.json
+    user_query = data.get('query')
+    
+    if not user_query:
+        return jsonify({"error": "No query provided"}), 400
+
+    try:
+        # Using the exact model name from your 'list_models' results
+        response = client.models.generate_content(
+            model="models/gemini-2.0-flash-lite",
+            contents=user_query,
+            config=types.GenerateContentConfig(
+                system_instruction="You are the GyanSetu AI Tutor. Provide helpful GPSC advice."
+            )
+        )
+        
+        return jsonify({"answer": response.text}), 200
+
+    except Exception as e:
+        # THIS PRINT IS CRITICAL: Check your terminal for this output!
+        print(f"--- DETAILED ERROR LOG ---")
+        print(str(e))
+        return jsonify({"error": "AI Tutor encountered a problem. Check server logs."}), 500
+
 # ==========================================
-# 1. IDENTITY & ACCESS MANAGEMENT
+# 2. IDENTITY, ACCESS & MANAGEMENT
 # ==========================================
 
 @app.route('/api/user/<uid>', methods=['GET'])
@@ -26,8 +67,6 @@ def get_profile(uid):
     try:
         user = User.query.filter_by(id=uid).first()
         if user:
-            # Add a print statement here to see what Flask finds in your terminal
-            print(f"User Found: {user.email}, Role: {user.role}") 
             return jsonify({
                 "role": user.role, 
                 "full_name": user.full_name,
@@ -39,53 +78,40 @@ def get_profile(uid):
 
 @app.route('/api/admin/promote-user', methods=['POST'])
 def promote_user():
-    """Allows Admin to manually change roles (e.g., Student to Expert)."""
     data = request.json
     try:
         user = User.query.get(data['uid'])
         if not user:
             return jsonify({"error": "User not found"}), 404
-        
         user.role = data['new_role'] 
         db.session.commit()
         return jsonify({"message": f"User promoted to {data['new_role']}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-# ==========================================
-# 2. EXPERT: MANAGE STUDENTS
-# ==========================================
-
 @app.route('/api/expert/students', methods=['GET'])
 def get_all_students():
     try:
-        # Added a debug print to see what's happening in your terminal
         students = User.query.filter(User.role.ilike('student')).all()
-        print(f"DEBUG: Found {len(students)} students in DB")
-        
         return jsonify([{
-            "id": str(s.id), # Ensure UUID is sent as a string
+            "id": str(s.id),
             "full_name": s.full_name,
             "email": s.email
         } for s in students]), 200
     except Exception as e:
-        print(f"!!! BACKEND ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # ==========================================
-# 3. CONTENT DELIVERY (STUDENT & EXPERT)
+# 3. CONTENT DELIVERY & UPLOAD
 # ==========================================
 
 @app.route('/api/materials', methods=['GET'])
 def get_materials():
-    """Fetches materials or syllabus based on type and category."""
-    m_type = request.args.get('type', 'material') # 'material' or 'syllabus'
+    m_type = request.args.get('type', 'material')
     category = request.args.get('category')
-    
     query = Material.query.filter_by(content_type=m_type)
     if category: 
         query = query.filter_by(category=category)
-    
     materials = query.all()
     return jsonify([{
         "id": m.id,
@@ -98,12 +124,10 @@ def get_materials():
 
 @app.route('/api/videos', methods=['GET'])
 def get_videos():
-    """Fetches all published videos with optional category filtering."""
     category = request.args.get('category')
     query = Video.query
     if category:
         query = query.filter_by(category=category)
-        
     videos = query.all()
     return jsonify([{
         "id": v.id,
@@ -114,13 +138,8 @@ def get_videos():
         "is_youtube": v.is_youtube
     } for v in videos]), 200
 
-# ==========================================
-# 4. EXPERT: UPLOAD & DELETE CONTENT
-# ==========================================
-
 @app.route('/api/expert/upload-content', methods=['POST'])
 def upload_content():
-    """Endpoint for uploading Syllabus and Material metadata."""
     data = request.json
     try:
         new_content = Material(
@@ -132,16 +151,22 @@ def upload_content():
             uploaded_by=data['uploaded_by']
         )
         db.session.add(new_content)
+        db.session.flush() 
+        if data['file_url'].lower().endswith('.pdf'):
+            process_pdf_for_ai(new_content.id, data['file_url'])
         db.session.commit()
-        return jsonify({"message": "Content uploaded successfully"}), 201
+        return jsonify({"message": f"{data['content_type']} uploaded and indexed"}), 201
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 400
 
 @app.route('/api/expert/upload-video', methods=['POST'])
 def upload_video():
-    """Endpoint for publishing YouTube or video links."""
     data = request.json
     try:
+        user = User.query.get(data['uploaded_by'])
+        if not user or user.role not in ['expert', 'admin']:
+            return jsonify({"error": "Unauthorized"}), 403
         new_video = Video(
             title=data['title'],
             category=data['category'],
@@ -151,13 +176,12 @@ def upload_video():
         )
         db.session.add(new_video)
         db.session.commit()
-        return jsonify({"message": "Video published successfully"}), 201
+        return jsonify({"message": "Video published"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 @app.route('/api/expert/delete-content/<int:id>', methods=['DELETE'])
 def delete_content(id):
-    """Removes material or syllabus entry by ID."""
     content = Material.query.get(id)
     if content:
         db.session.delete(content)
@@ -167,7 +191,6 @@ def delete_content(id):
 
 @app.route('/api/expert/delete-video/<int:id>', methods=['DELETE'])
 def delete_video(id):
-    """Removes a video entry by ID."""
     video = Video.query.get(id)
     if video:
         db.session.delete(video)
