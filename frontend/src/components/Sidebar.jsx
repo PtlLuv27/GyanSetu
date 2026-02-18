@@ -20,14 +20,19 @@ const Sidebar = () => {
       { name: 'Syllabus', path: '/student/syllabus', icon: '📚' },
       { name: 'Materials', path: '/student/materials', icon: '📄' },
       { name: 'Videos', path: '/student/videos', icon: '🎥' },
-      { name: 'AI Tutor', path: '/student/ai-tutor', icon: '🤖' } // Matches App.jsx route
+      { name: 'Previous Papers', path: '/student/studentpyp', icon: '📜' },
+      { name: 'AI Tutor', path: '/student/ai-tutor', icon: '🤖' },
+      { name: 'Mock Test', path: '/student/mock-test', icon: '📝' } 
     ],
     expert: [
       { name: 'Dashboard', path: '/expert', icon: '📊' },
       { name: 'Manage Syllabus', path: '/expert/syllabus', icon: '📚' },
       { name: 'Manage Materials', path: '/expert/materials', icon: '📄' },
+      { name: 'Upload PYP', path: '/expert/pyp', icon: '📜' },
       { name: 'Manage Videos', path: '/expert/videos', icon: '🎥' },
       { name: 'Manage Students', path: '/expert/students', icon: '👥' },
+      // Placeholder for Expert side test management
+      { name: 'Test Analytics', path: '/expert/tests', icon: '📈' }, 
     ] 
   };
 

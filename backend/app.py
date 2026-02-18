@@ -8,6 +8,7 @@ import io
 import PyPDF2
 from google import genai # New SDK import
 from google.genai import types # For configuration types
+from google.api_core import exceptions
 from sqlalchemy import text
 import json
 
@@ -32,6 +33,119 @@ client = genai.Client(api_key=GEMINI_KEY)
 # Replaces genai.configure and genai.GenerativeModel
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+def process_pdf_for_ai(material_id, file_url):
+    try:
+        # Download the PDF from the Supabase Public URL
+        response = requests.get(file_url)
+        if response.status_code == 200:
+            pdf_file = io.BytesIO(response.content)
+            reader = PyPDF2.PdfReader(pdf_file)
+            
+            # Extract text from the first few pages (to avoid token limits)
+            text_content = ""
+            for i in range(min(len(reader.pages), 5)):
+                text_content += reader.pages[i].extract_text()
+            
+            # Optional: Log that text was extracted or save to a 'search_index' column
+            print(f"Successfully indexed PDF for Material ID: {material_id}")
+            # Here you could update the database with the extracted text if needed
+            
+    except Exception as e:
+        print(f"Error processing PDF {material_id}: {str(e)}")
+
+@app.route('/api/test/<int:test_id>/questions', methods=['GET'])
+def get_test_questions(test_id):
+    try:
+        query = text("""
+            SELECT question_text, options, correct_answer, explanation 
+            FROM questions 
+            WHERE test_id = :tid
+        """)
+        result = db.session.execute(query, {"tid": test_id}).fetchall()
+        
+        return jsonify([{
+            "question": r[0], "options": r[1], 
+            "correct_answer": r[2], "explanation": r[3]
+        } for r in result]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/test/submit', methods=['POST'])
+def submit_test():
+    data = request.json
+    try:
+        new_attempt = text("""
+            INSERT INTO test_attempts (user_id, test_id, score, accuracy)
+            VALUES (:uid, :tid, :score, :acc)
+        """)
+        db.session.execute(new_attempt, {
+            "uid": data['user_id'],
+            "tid": data['test_id'],
+            "score": data['score'],
+            "acc": data['accuracy']
+        })
+        db.session.commit()
+        return jsonify({"message": "Result saved!"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/api/ai/generate-test', methods=['POST'])
+def generate_test():
+    data = request.json
+    subject = data.get('subject', 'Indian Polity')
+
+    try:
+        # Changed table name to 'questions' to match your schema
+        query = text("""
+            SELECT question_text, options, correct_answer, explanation 
+            FROM questions 
+            WHERE subject = :sub 
+            ORDER BY RANDOM() 
+            LIMIT 5
+        """)
+        
+        result = db.session.execute(query, {"sub": subject}).fetchall()
+
+        if not result:
+            return jsonify({"error": f"No questions found for {subject} in the database."}), 404
+
+        # Format the result into the JSON structure your frontend expects
+        questions = []
+        for row in result:
+            questions.append({
+                "question": row[0],
+                "options": row[1], # Assumes options is a JSONB/List column
+                "correct_answer": row[2],
+                "explanation": row[3]
+            })
+
+        return jsonify(questions), 200
+
+    except Exception as e:
+        print(f"Database Fetch Error: {str(e)}")
+        return jsonify({"error": "Failed to fetch questions from database"}), 500
+
+@app.route('/api/pyp', methods=['GET'])
+def get_pyp():
+    try:
+        # ilike ignores case and is safer for PostgreSQL
+        papers = Material.query.filter(Material.content_type.ilike('pyp')).all()
+        
+        print(f"DEBUG: Found {len(papers)} papers in DB") # Check your terminal for this!
+        
+        return jsonify([{
+            "id": p.id,
+            "title": p.title,
+            "subject": p.subject,
+            "exam_name": p.exam_name,
+            "exam_year": p.exam_year,
+            "category": p.category,
+            "file_url": p.file_url
+        } for p in papers]), 200
+    except Exception as e:
+        print(f"DATABASE ERROR: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/api/ai/ask', methods=['POST'])
 def ask_ai_tutor():
     data = request.json
@@ -43,7 +157,7 @@ def ask_ai_tutor():
     try:
         # Using the exact model name from your 'list_models' results
         response = client.models.generate_content(
-            model="models/gemini-2.0-flash-lite",
+            model="models/gemini-2.5-flash-lite",
             contents=user_query,
             config=types.GenerateContentConfig(
                 system_instruction="You are the GyanSetu AI Tutor. Provide helpful GPSC advice."

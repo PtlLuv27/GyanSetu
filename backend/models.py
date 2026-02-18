@@ -15,10 +15,15 @@ class Material(db.Model):
     __tablename__ = 'materials'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
-    category = db.Column(db.String(50)) # 'prelims', 'mains', 'interview'
+    category = db.Column(db.String(50)) 
     subject = db.Column(db.String(100))
-    content_type = db.Column(db.String(20), default='material') # 'material' or 'syllabus'
+    content_type = db.Column(db.String(20), default='material') 
     file_url = db.Column(db.Text)
+    
+    # ADD THESE TWO COLUMNS TO MATCH SUPABASE
+    exam_year = db.Column(db.Integer)
+    exam_name = db.Column(db.String(100))
+    
     uploaded_by = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
@@ -33,3 +38,13 @@ class Video(db.Model):
     is_youtube = db.Column(db.Boolean, default=True)
     uploaded_by = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+class Question(db.Model):
+    __tablename__ = 'questions'
+    id = db.Column(db.Integer, primary_key=True)
+    test_id = db.Column(db.Integer, db.ForeignKey('tests.id'))
+    question_text = db.Column(db.Text, nullable=False)
+    options = db.Column(db.JSON, nullable=False) # Use JSON for options list
+    correct_answer = db.Column(db.Integer, nullable=False)
+    explanation = db.Column(db.Text)
+    subject = db.Column(db.String(100))

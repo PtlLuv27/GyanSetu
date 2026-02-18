@@ -427,3 +427,66 @@ ON video_bookmarks FOR ALL
 TO authenticated 
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
+
+-- 1. Add new columns for Year and Exam Name
+ALTER TABLE materials 
+ADD COLUMN exam_year INTEGER,
+ADD COLUMN exam_name TEXT;
+
+-- 2. Update the Category and Content Type constraints
+-- Note: In PostgreSQL, we drop the old constraint and add a new one to include 'pyp'
+ALTER TABLE materials DROP CONSTRAINT IF EXISTS materials_content_type_check;
+ALTER TABLE materials ADD CONSTRAINT materials_content_type_check 
+CHECK (content_type IN ('material', 'syllabus', 'pyp'));
+
+-- 3. (Optional) Add a comment to describe the new fields
+COMMENT ON COLUMN materials.exam_year IS 'The year the exam was conducted';
+COMMENT ON COLUMN materials.exam_name IS 'The specific name of the exam (e.g., GPSC Class 1/2, DYSO)';
+
+-- 1. Ensure the Materials Table has the new columns
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='materials' AND column_name='exam_year') THEN
+        ALTER TABLE materials ADD COLUMN exam_year INTEGER;
+        ALTER TABLE materials ADD COLUMN exam_name TEXT;
+    END IF;
+END $$;
+
+-- 2. Update the Content Type constraint to allow 'pyp'
+ALTER TABLE materials DROP CONSTRAINT IF EXISTS materials_content_type_check;
+ALTER TABLE materials ADD CONSTRAINT materials_content_type_check 
+CHECK (content_type IN ('material', 'syllabus', 'pyp'));
+
+-- 3. Reset and Apply Policies for Materials
+DROP POLICY IF EXISTS "Anyone can view materials" ON materials;
+CREATE POLICY "Anyone can view materials" ON materials 
+FOR SELECT TO authenticated 
+USING (true);
+
+DROP POLICY IF EXISTS "Experts can manage materials" ON materials;
+CREATE POLICY "Experts can manage materials" ON materials 
+FOR ALL TO authenticated 
+USING (
+    (auth.jwt() -> 'app_metadata' ->> 'role' = 'expert') 
+    OR 
+    (auth.jwt() -> 'user_metadata' ->> 'role' = 'expert')
+)
+WITH CHECK (
+    (auth.jwt() -> 'app_metadata' ->> 'role' = 'expert') 
+    OR 
+    (auth.jwt() -> 'user_metadata' ->> 'role' = 'expert')
+);
+
+-- 4. Ensure RLS is enabled
+ALTER TABLE materials ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE questions (
+    id SERIAL PRIMARY KEY,
+    test_id INT REFERENCES tests(id) ON DELETE CASCADE,
+    question_text TEXT NOT NULL,
+    options JSONB NOT NULL, -- Format: ["A", "B", "C", "D"]
+    correct_answer INTEGER NOT NULL, -- Index 0-3
+    explanation TEXT,
+    subject TEXT, -- e.g., 'Polity', 'History'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);

@@ -10,12 +10,16 @@ import StudentDashboard from './dashboards/Student/StudentDashboard';
 import Syllabus from './dashboards/Student/Syllabus';
 import Materials from './dashboards/Student/Materials';
 import Videos from './dashboards/Student/Videos'; // Student View: Read-only
+import StudentPYP from './dashboards/Student/StudentPYP';
 import AITutor from './dashboards/Student/AITutor';
+import MockTest from './dashboards/Student/MockTest';
+
 
 // Expert Components
 import ExpertDashboard from './dashboards/Expert/ExpertDashboard';
 import UploadSyllabus from './dashboards/Expert/UploadSyllabus';  
 import UploadMaterials from './dashboards/Expert/UploadMaterials'; 
+import UploadPYP from './dashboards/Expert/UploadPYP'; 
 import UploadVideos from './dashboards/Expert/UploadVideos'; // Expert View: Management
 import ManageStudents from './dashboards/Expert/ManageStudents';   
 
@@ -59,6 +63,7 @@ function App() {
             <Route index element={<ExpertDashboard />} />
             <Route path="syllabus" element={<UploadSyllabus />} />
             <Route path="materials" element={<UploadMaterials />} />
+            <Route path="pyp" element={<UploadPYP />} />
             <Route path="videos" element={<UploadVideos />} />
             <Route path="students" element={<ManageStudents />} />
           </Route>
@@ -76,7 +81,9 @@ function App() {
                       <Route path="syllabus" element={<Syllabus />} />
                       <Route path="materials" element={<Materials />} />
                       <Route path="videos" element={<Videos />} />
+                      <Route path="studentpyp" element={<StudentPYP />} />
                       <Route path="ai-tutor" element={<AITutor />} />
+                      <Route path="mock-test" element={<MockTest />} />
                     </Routes>
                   </main>
                 </div>
